@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    environment {
+        IMAGE = 'myrepo/devops-app:latest'
+        KUBECONFIG = credentials('kubeconfig')
+        SONARQUBE_SERVER = 'http://sonarqube:9000'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/myrepo/devops-project.git'
+            }
+        }
+        stage('Static Code Analysis') {
+            steps {
+                script {
+                    sh 'sonar-scanner -Dsonar.projectKey=devops-app -Dsonar.host.url=$SONARQUBE_SERVER'
+                }
+            }
+        }
+        stage('Build & Scan') {
+            steps {
+                script {
+                    sh 'docker build -t $IMAGE .'
+                    sh 'trivy image $IMAGE'
+                }
+            }
+        }
+        stage('Push Image') {
+            steps {
+                script {
+                    sh 'docker push $IMAGE'
+                }
+            }
+        }
+        stage('Deploy to K8s') {
+            steps {
+                script {
+                    sh 'kubectl apply -f k8s/deployment.yaml'
+                }
+            }
+        }
+    }
+    post {
+        success {
+            slackSend(channel: '#devops-alerts', message: 'Build & Deployment Successful! ✅')
+        }
+        failure {
+            slackSend(channel: '#devops-alerts', message: 'Build Failed ❌')
+        }
+    }
+}
